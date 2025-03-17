@@ -1,9 +1,11 @@
 'use strict';
 
 import { Model } from './model.js';
+import { StereoCamera } from './stereo-camera.js';
 
 let gl;
 let model;
+let stereoCamera;
 let shaderProgram;
 let spaceBall;
 
@@ -83,19 +85,33 @@ function draw() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    const projection = m4.perspective(Math.PI / 4, gl.canvas.width / gl.canvas.height, 0.1, 100);
     const rotate = m4.axisRotation([0.707, 0.707, 0], 0.7);
     const translate = m4.translation(0, 0, -10);
 
     let modelView = spaceBall.getViewMatrix();
+    let leftProjection = m4.identity();
+    let rightProjection = m4.identity();
+    let modelViewProjection;
+
     modelView = m4.multiply(rotate, modelView);
     modelView = m4.multiply(translate, modelView);
 
-    const modelViewProjection = m4.multiply(projection, modelView);
-    gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
-    gl.uniform3fv(shaderProgram.uColor, [1.0, 0.0, 0.0]);
+    updateStereoCamera();
+    gl.uniform3fv(shaderProgram.uColor, [1.0, 1.0, 1.0]);
 
+    gl.colorMask(true, false, false, true);
+    stereoCamera.applyFrustum(modelView, leftProjection, 'left');
+    modelViewProjection = m4.multiply(leftProjection, modelView);
+    gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
     updateModel();
+
+    gl.colorMask(false, true, true, true);
+    stereoCamera.applyFrustum(modelView, rightProjection, 'right');
+    modelViewProjection = m4.multiply(rightProjection, modelView);
+    gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
+    updateModel();
+
+    gl.colorMask(true, true, true, true);
 }
 
 
@@ -111,15 +127,18 @@ function updateModel() {
     model.draw();
 }
 
-document.querySelectorAll('input').forEach(input => {
-    input.addEventListener('input', (event) => {
-        const id = event.target.id;
+function updateStereoCamera() {
+    const convergence = parseFloat(document.getElementById('convergence').value);
+    const eyeSeparation = parseFloat(document.getElementById('eyeSeparation').value);
+    const fov = parseInt(document.getElementById('fov').value);
+    const nearClippingDistance = parseInt(document.getElementById('nearClippingDistance').value);
+    const farClippingDistance = parseInt(document.getElementById('farClippingDistance').value);
 
-        if (['radius', 'amplitude', 'wavesCount', 'segmentsCountByU', 'segmentsCountByV'].includes(id)) {
-            draw();
-        } else {
-        }
-    });
+    stereoCamera = new StereoCamera(convergence, eyeSeparation, gl.canvas.width / gl.canvas.height, fov, nearClippingDistance, farClippingDistance);
+}
+
+document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', () => draw());
 });
 
 document.getElementById('segmentsCountByU').addEventListener('input', function (){

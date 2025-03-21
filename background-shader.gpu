@@ -1,0 +1,29 @@
+// Vertex shader
+const backgroundVertexShaderSource = `
+    attribute vec2 aPosition;
+    attribute vec2 aTexCoord;
+
+    varying vec2 vTexCoord;
+
+    void main() {
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+        vTexCoord = aTexCoord;
+    }
+`;
+
+// Fragment shader
+const backgroundFragmentShaderSource = `
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+       precision highp float;
+    #else
+       precision mediump float;
+    #endif
+
+    varying vec2 vTexCoord;
+
+    uniform sampler2D uVideoTexture;
+
+    void main() {
+        gl_FragColor = texture2D(uVideoTexture, vTexCoord);
+    }
+`;

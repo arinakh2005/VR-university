@@ -7,7 +7,12 @@ let gl;
 let model;
 let stereoCamera;
 let shaderProgram;
+let backgroundShaderProgram;
 let spaceBall;
+let video;
+let videoTexture;
+let quadBuffer;
+let texCoordBuffer;
 
 class ShaderProgram {
     constructor(name, program) {
@@ -32,15 +37,24 @@ export function init() {
         return;
     }
 
-    try {
-        initGL();
-    } catch (e) {
-        document.getElementById('canvas-holder').innerHTML = `<p>WebGL initialization failed: ${e}</p>`;
-        return;
-    }
-
+    initVideoStream();
+    initGL();
     spaceBall = new TrackballRotator(canvas, draw, 0);
     draw();
+}
+
+function initVideoStream() {
+    video = document.createElement('video');
+    video.autoplay = true;
+    video.loop = true;
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => {
+            video.srcObject = stream;
+        })
+        .catch((err) => {
+            console.error('Error accessing webcam: ', err);
+        });
 }
 
 function initGL() {
@@ -48,10 +62,20 @@ function initGL() {
     shaderProgram = new ShaderProgram('BasicProgram', program);
     shaderProgram.use();
 
-    // Get attribute and uniform locations
     shaderProgram.aVertex = gl.getAttribLocation(program, 'aVertex');
     shaderProgram.uModelViewProjectionMatrix = gl.getUniformLocation(program, 'uModelViewProjectionMatrix');
     shaderProgram.uColor = gl.getUniformLocation(program, 'uColor');
+
+    const bgProgram = createProgram(gl, backgroundVertexShaderSource, backgroundFragmentShaderSource);
+    backgroundShaderProgram = new ShaderProgram('BackgroundProgram', bgProgram);
+    backgroundShaderProgram.use();
+
+    backgroundShaderProgram.aPosition = gl.getAttribLocation(bgProgram, 'aPosition');
+    backgroundShaderProgram.aTexCoord = gl.getAttribLocation(bgProgram, 'aTexCoord');
+    backgroundShaderProgram.uVideoTexture = gl.getUniformLocation(bgProgram, 'uVideoTexture');
+
+    initQuadBuffers();
+    initVideoTexture();
 }
 
 function createProgram(gl, vShader, fShader) {
@@ -80,9 +104,70 @@ function createProgram(gl, vShader, fShader) {
     return program;
 }
 
+function initQuadBuffers() {
+    const vertices = new Float32Array([
+        -1, -1,
+        1, -1,
+        -1, 1,
+        1, 1,
+    ]);
+    quadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+
+    const texCoords = new Float32Array([
+        0, 1,
+        1, 1,
+        0, 0,
+        1, 0,
+    ]);
+    texCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+}
+
+function initVideoTexture() {
+    videoTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+function updateVideoTexture() {
+    if (video.readyState >= 2) {
+        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+    }
+}
+
+function renderVideoBackground() {
+    updateVideoTexture();
+
+    backgroundShaderProgram.use();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+    gl.uniform1i(backgroundShaderProgram.uVideoTexture, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.enableVertexAttribArray(backgroundShaderProgram.aPosition);
+    gl.vertexAttribPointer(backgroundShaderProgram.aPosition, 2, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.enableVertexAttribArray(backgroundShaderProgram.aTexCoord);
+    gl.vertexAttribPointer(backgroundShaderProgram.aTexCoord, 2, gl.FLOAT, false, 0, 0);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
 function draw() {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.disable(gl.DEPTH_TEST);
+    renderVideoBackground();
     gl.enable(gl.DEPTH_TEST);
 
     const rotate = m4.axisRotation([0.707, 0.707, 0], 0.7);
@@ -97,6 +182,7 @@ function draw() {
     modelView = m4.multiply(translate, modelView);
 
     updateStereoCamera();
+    shaderProgram.use();
     gl.uniform3fv(shaderProgram.uColor, [1.0, 1.0, 1.0]);
 
     gl.colorMask(true, false, false, true);

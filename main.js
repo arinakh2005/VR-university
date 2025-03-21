@@ -114,7 +114,6 @@ function draw() {
     gl.colorMask(true, true, true, true);
 }
 
-
 function updateModel() {
     const radius = parseFloat(document.getElementById('radius').value);
     const amplitude = parseFloat(document.getElementById('amplitude').value);
@@ -125,6 +124,7 @@ function updateModel() {
     model = new Model(gl, shaderProgram, radius, amplitude, wavesCount, segmentsCountByU, segmentsCountByV);
     model.bufferData();
     model.draw();
+    model.drawWireframe();
 }
 
 function updateStereoCamera() {

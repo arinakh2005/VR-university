@@ -27,6 +27,7 @@ export class Model {
         this.segmentsCountV = segmentsCountByV;
         this.vertexBuffer = this.gl.createBuffer();
         this.indexBuffer = this.gl.createBuffer();
+        this.indexBufferWireframe = this.gl.createBuffer();
 
         this.bufferData();
     }
@@ -71,6 +72,24 @@ export class Model {
         return indices;
     }
 
+    /** Generates indices for drawing the wireframe of a corrugated sphere. **/
+    getWireframeIndices() {
+        const indices = [];
+
+        for (let i = 0; i < this.segmentsCountU; i++) {
+            for (let j = 0; j < this.segmentsCountV; j++) {
+                const point = i * (this.segmentsCountV + 1) + j;
+                const pointInNextRow = point + (this.segmentsCountV + 1);
+
+                indices.push(point, point + 1);
+                indices.push(point, pointInNextRow);
+                indices.push(point + 1, pointInNextRow);
+            }
+        }
+
+        return indices;
+    }
+
     /** Buffers the vertex data for U and V curves in the WebGL context. **/
     bufferData() {
         const vertices = this.getVertices();
@@ -80,6 +99,10 @@ export class Model {
         const indices = this.getIndices();
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), this.gl.STATIC_DRAW);
+
+        const wireframeIndices = this.getWireframeIndices();
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBufferWireframe);
+        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireframeIndices), this.gl.STATIC_DRAW);
     }
 
     /** Draws the corrugated sphere model using buffered vertex and index data. **/
@@ -88,7 +111,24 @@ export class Model {
         this.gl.vertexAttribPointer(this.shaderProgram.aVertex, 3, this.gl.FLOAT, false, 0, 0);
         this.gl.enableVertexAttribArray(this.shaderProgram.aVertex);
 
+        this.gl.uniform3fv(this.shaderProgram.uColor,  new Float32Array([0.5, 0.5, 0.5]));
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
         this.gl.drawElements(this.gl.TRIANGLES, this.segmentsCountU * this.segmentsCountV * 6, this.gl.UNSIGNED_SHORT, 0);
+    }
+
+    /** Draws the wireframe of the corrugated sphere using buffered vertex and index data. **/
+    drawWireframe() {
+        this.gl.enable(this.gl.POLYGON_OFFSET_FILL);
+        this.gl.polygonOffset(1, 1);
+
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
+        this.gl.vertexAttribPointer(this.shaderProgram.aVertex, 3, this.gl.FLOAT, false, 0, 0);
+        this.gl.enableVertexAttribArray(this.shaderProgram.aVertex);
+
+        this.gl.uniform3fv(this.shaderProgram.uColor, new Float32Array([0.8, 0.8, 0.8]));
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBufferWireframe);
+        this.gl.drawElements(this.gl.LINES, this.segmentsCountU * this.segmentsCountV * 6, this.gl.UNSIGNED_SHORT, 0);
+
+        this.gl.disable(this.gl.POLYGON_OFFSET_FILL);
     }
 }

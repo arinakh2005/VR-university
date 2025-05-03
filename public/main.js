@@ -13,6 +13,7 @@ let video;
 let videoTexture;
 let quadBuffer;
 let texCoordBuffer;
+let sensorRotationMatrix4;
 
 class ShaderProgram {
     constructor(name, program) {
@@ -41,6 +42,7 @@ export function init() {
     initGL();
     spaceBall = new TrackballRotator(canvas, draw, 0);
     draw();
+    connectSensorServer();
 }
 
 function initVideoStream() {
@@ -162,6 +164,71 @@ function renderVideoBackground() {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
+function getRotationMatrix4FromVector(rotationVector) {
+    let q0;
+    let q1 = rotationVector[0];
+    let q2 = rotationVector[1];
+    let q3 = rotationVector[2];
+
+    if (rotationVector.length >= 4) {
+        q0 = rotationVector[3];
+    } else {
+        q0 = 1 - q1 * q1 - q2 * q2 - q3 * q3;
+        q0 = q0 > 0 ? Math.sqrt(q0) : 0;
+    }
+
+    const sq_q1 = 2 * q1 * q1;
+    const sq_q2 = 2 * q2 * q2;
+    const sq_q3 = 2 * q3 * q3;
+    const q1_q2 = 2 * q1 * q2;
+    const q3_q0 = 2 * q3 * q0;
+    const q1_q3 = 2 * q1 * q3;
+    const q2_q0 = 2 * q2 * q0;
+    const q2_q3 = 2 * q2 * q3;
+    const q1_q0 = 2 * q1 * q0;
+
+    const R = new Float32Array(16);
+    R[0] = 1 - sq_q2 - sq_q3;
+    R[1] = q1_q2 - q3_q0;
+    R[2] = q1_q3 + q2_q0;
+    R[3] = 0;
+    R[4] = q1_q2 + q3_q0;
+    R[5] = 1 - sq_q1 - sq_q3;
+    R[6] = q2_q3 - q1_q0;
+    R[7] = 0;
+    R[8] = q1_q3 - q2_q0;
+    R[9] = q2_q3 + q1_q0;
+    R[10] = 1 - sq_q1 - sq_q2;
+    R[11] = 0;
+    R[12] = R[13] = R[14] = 0;
+    R[15] = 1;
+
+    return R;
+}
+
+function connectSensorServer() {
+    const sensorIp   = '192.168.31.70';
+    const sensorPort = 8080;
+    const sensorType = 'android.sensor.rotation_vector';
+    const socketUrl = `ws://${sensorIp}:${sensorPort}/sensor/connect?type=${sensorType}`;
+    const socket = new WebSocket(socketUrl);
+
+    socket.onopen = () => {
+        console.log('WS → Sensor Server connected');
+    }
+
+    socket.onmessage = ({ data }) => {
+        const message = JSON.parse(data);
+        if (message.values) {
+            sensorRotationMatrix4 = getRotationMatrix4FromVector(message.values);
+            draw();
+        }
+    };
+
+    socket.onerror = ($event) => console.error('WS error:', $event);
+    socket.onclose = ($event) => console.warn('WS closed', $event.code, $event.reason);
+}
+
 function draw() {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -170,16 +237,18 @@ function draw() {
     renderVideoBackground();
     gl.enable(gl.DEPTH_TEST);
 
-    const rotate = m4.axisRotation([0.707, 0.707, 0], 0.7);
-    const translate = m4.translation(0, 0, -10);
-
+    let translate = m4.translation(0, 0, -10);
     let modelView = spaceBall.getViewMatrix();
+
+    if (!sensorRotationMatrix4) {
+        sensorRotationMatrix4 = m4.identity();
+    }
+    modelView = m4.multiply(sensorRotationMatrix4, modelView);
+    modelView = m4.multiply(translate, modelView);
+
     let leftProjection = m4.identity();
     let rightProjection = m4.identity();
     let modelViewProjection;
-
-    modelView = m4.multiply(rotate, modelView);
-    modelView = m4.multiply(translate, modelView);
 
     updateStereoCamera();
     shaderProgram.use();
@@ -207,7 +276,9 @@ function updateModel() {
     const segmentsCountByU = parseInt(document.getElementById('segmentsCountByU').value);
     const segmentsCountByV = parseInt(document.getElementById('segmentsCountByV').value);
 
-    model = new Model(gl, shaderProgram, radius, amplitude, wavesCount, segmentsCountByU, segmentsCountByV);
+    if (!model) {
+        model = new Model(gl, shaderProgram, radius, amplitude, wavesCount, segmentsCountByU, segmentsCountByV);
+    }
     model.bufferData();
     model.draw();
     model.drawWireframe();

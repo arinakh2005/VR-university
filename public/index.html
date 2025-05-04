@@ -2,17 +2,10 @@
 <html>
    <head>
       <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <title>PR-01 Corrugated Sphere</title>
+      <title>PR-03 Corrugated Sphere</title>
       <style>
          body {
             background-color: #EEEEEE;
-         }
-         .range-container {
-            display: flex;
-            align-items: center;
-         }
-         .range-value {
-            margin-left: 10px;
          }
          .form-label {
             margin-bottom: 0 !important;
@@ -24,6 +17,7 @@
       <script src="Utils/m4.js"></script>
       <script src="shader.gpu"></script>
       <script src="background-shader.gpu"></script>
+      <script src="audio-sphere-model.js" type="module"></script>
       <script src="model.js" type="module"></script>
       <script src="stereo-camera.js" type="module"></script>
       <script src="main.js" type="module"></script>
@@ -40,32 +34,6 @@
       </div>
       <div id="settings-section" class="py-1 px-3">
          <div class="mb-2">
-            <label for="radius" class="form-label">Radius (R):</label>
-            <input type="number" class="form-control" id="radius" value="1" step="0.1">
-         </div>
-         <div class="mb-2">
-            <label for="amplitude" class="form-label">Amplitude (a):</label>
-            <input type="number" class="form-control" id="amplitude" value="0.25" step="0.1">
-         </div>
-         <div class="mb-2">
-            <label for="wavesCount" class="form-label">Number of Waves (n):</label>
-            <input type="number" class="form-control" id="wavesCount" value="6" step="1">
-         </div>
-         <div class="mb-2">
-            <label for="segmentsCountByU" class="form-label">Segments Count (U):</label>
-            <div class="range-container">
-               <input type="range" class="form-range" id="segmentsCountByU" min="10" max="100" value="50">
-               <span id="segmentsCountByUValue" class="range-value">50</span>
-            </div>
-         </div>
-         <div class="mb-2">
-            <label for="segmentsCountByV" class="form-label">Segments Count (V):</label>
-            <div class="range-container">
-               <input type="range" class="form-range" id="segmentsCountByV" min="10" max="100" value="50">
-               <span id="segmentsCountByVValue" class="range-value">50</span>
-            </div>
-         </div>
-         <div class="mb-2">
             <label for="convergence" class="form-label">Convergence:</label>
             <input type="number" class="form-control" id="convergence" min="0" max="50" step="1" value="20">
          </div>
@@ -79,11 +47,20 @@
          </div>
          <div class="mb-21">
             <label for="nearClippingDistance" class="form-label">Near Clipping Distance:</label>
-            <input type="number" class="form-control" id="nearClippingDistance" min="0.1" max="10" step="0.5" value="8.5">
+            <input type="number" class="form-control" id="nearClippingDistance" min="0.1" max="10" step="0.5" value="6.5">
          </div>
          <div class="mb-2">
             <label for="farClippingDistance" class="form-label">Far Clipping Distance:</label>
             <input type="number" class="form-control" id="farClippingDistance" min="0" max="2000" step="10" value="2000">
+         </div>
+         <div class="mb-2">
+            <label for="audioFile" class="form-label">Select Audio File:</label>
+            <input type="file" class="form-control" id="audioFile" accept=".mp3, .ogg">
+         </div>
+         <div class="mb-2">
+            <label>
+               <input type="checkbox" id="filterToggle"> Band‑pass filter
+            </label>
          </div>
       </div>
    </div>

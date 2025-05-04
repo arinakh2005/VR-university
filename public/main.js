@@ -1,6 +1,7 @@
 'use strict';
 
 import { Model } from './model.js';
+import { SphereModel } from './audio-sphere-model.js';
 import { StereoCamera } from './stereo-camera.js';
 
 let gl;
@@ -14,6 +15,8 @@ let videoTexture;
 let quadBuffer;
 let texCoordBuffer;
 let sensorRotationMatrix4;
+let audioSphereModel;
+let audioContext, sourceNode, filterNode, analyserNode, pannerNode, frequencyData;
 
 class ShaderProgram {
     constructor(name, program) {
@@ -57,6 +60,37 @@ function initVideoStream() {
         .catch((err) => {
             console.error('Error accessing webcam: ', err);
         });
+}
+
+async function initAudioFromFile(file) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    await audioContext.resume();
+
+    const arrayBuffer = await file.arrayBuffer();
+    audioContext.decodeAudioData(arrayBuffer, (decodedBuffer) => {
+        sourceNode = audioContext.createBufferSource();
+        sourceNode.buffer = decodedBuffer;
+        sourceNode.loop = true;
+
+        filterNode = audioContext.createBiquadFilter();
+        filterNode.type = 'bandpass';
+        filterNode.frequency.value = 1000;
+        filterNode.Q.value = 1;
+
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 64;
+        frequencyData = new Uint8Array(analyserNode.frequencyBinCount);
+
+        pannerNode = audioContext.createPanner();
+        pannerNode.panningModel = 'HRTF';
+        pannerNode.distanceModel = 'inverse';
+        pannerNode.positionX.value = 0;
+        pannerNode.positionY.value = 0;
+        pannerNode.positionZ.value = 0;
+
+        updateAudioGraph();
+        sourceNode.start(0);
+    }, (error) => console.error('Error decoding audio data:', error));
 }
 
 function initGL() {
@@ -207,7 +241,7 @@ function getRotationMatrix4FromVector(rotationVector) {
 }
 
 function connectSensorServer() {
-    const sensorIp   = '192.168.31.70';
+    const sensorIp   = '192.168.0.103';
     const sensorPort = 8080;
     const sensorType = 'android.sensor.rotation_vector';
     const socketUrl = `ws://${sensorIp}:${sensorPort}/sensor/connect?type=${sensorType}`;
@@ -258,30 +292,45 @@ function draw() {
     stereoCamera.applyFrustum(modelView, leftProjection, 'left');
     modelViewProjection = m4.multiply(leftProjection, modelView);
     gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
-    updateModel();
+    if (!model) {
+        model = new Model(gl, shaderProgram, 1, 0.4, 4, 50, 50);
+    }
+    model.draw();
+    model.drawWireframe();
 
     gl.colorMask(false, true, true, true);
     stereoCamera.applyFrustum(modelView, rightProjection, 'right');
     modelViewProjection = m4.multiply(rightProjection, modelView);
     gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
-    updateModel();
-
-    gl.colorMask(true, true, true, true);
-}
-
-function updateModel() {
-    const radius = parseFloat(document.getElementById('radius').value);
-    const amplitude = parseFloat(document.getElementById('amplitude').value);
-    const wavesCount = parseInt(document.getElementById('wavesCount').value);
-    const segmentsCountByU = parseInt(document.getElementById('segmentsCountByU').value);
-    const segmentsCountByV = parseInt(document.getElementById('segmentsCountByV').value);
-
-    if (!model) {
-        model = new Model(gl, shaderProgram, radius, amplitude, wavesCount, segmentsCountByU, segmentsCountByV);
-    }
-    model.bufferData();
     model.draw();
     model.drawWireframe();
+
+    gl.colorMask(true, true, true, true);
+
+    if (analyserNode && pannerNode) {
+        analyserNode.getByteFrequencyData(frequencyData);
+
+        const averageAmplitude = frequencyData.reduce((sum, value) => sum + value, 0) / frequencyData.length;
+        const sphereScale = 1 + (averageAmplitude / 255) * 0.5;
+        const rotationMatrix = sensorRotationMatrix4 || m4.identity();
+        const [posX, posY, posZ] = m4.transformPoint(rotationMatrix, [0, 0, 0, 1]);
+
+        pannerNode.positionX.value = posX;
+        pannerNode.positionY.value = posY;
+        pannerNode.positionZ.value = posZ;
+
+        const sphereTranslationMatrix = m4.translation(posX, posY, posZ);
+        const sphereScaleMatrix = m4.scaling(sphereScale, sphereScale, sphereScale);
+        const sphereModelMatrix = m4.multiply(sphereTranslationMatrix, sphereScaleMatrix);
+        const sphereModelViewProjection = m4.multiply(leftProjection, m4.multiply(modelView, sphereModelMatrix));
+
+        gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, sphereModelViewProjection);
+        if (!audioSphereModel) {
+            audioSphereModel = new SphereModel(gl, shaderProgram, 2.5, 24, 24);
+        }
+        audioSphereModel.draw();
+        gl.uniform3fv(shaderProgram.uColor, [1.0, 1.0, 1.0]);
+    }
 }
 
 function updateStereoCamera() {
@@ -294,18 +343,35 @@ function updateStereoCamera() {
     stereoCamera = new StereoCamera(convergence, eyeSeparation, gl.canvas.width / gl.canvas.height, fov, nearClippingDistance, farClippingDistance);
 }
 
+function updateAudioGraph() {
+    sourceNode.disconnect();
+    filterNode.disconnect();
+    analyserNode.disconnect();
+    pannerNode.disconnect();
+
+    const filterOn = document.getElementById('filterToggle').checked;
+    if (filterOn) {
+        sourceNode.connect(filterNode);
+        filterNode.connect(analyserNode);
+    } else {
+        sourceNode.connect(analyserNode);
+    }
+
+    analyserNode.connect(pannerNode);
+    pannerNode.connect(audioContext.destination);
+}
+
 document.querySelectorAll('input').forEach(input => {
     input.addEventListener('input', () => draw());
 });
 
-document.getElementById('segmentsCountByU').addEventListener('input', function (){
-    document.getElementById('segmentsCountByUValue').textContent = this.value;
-    updateModel();
+document.getElementById('audioFile').addEventListener('change', function () {
+    const file = this.files[0];
+    if (file) initAudioFromFile(file).catch(console.error);
 });
 
-document.getElementById('segmentsCountByV').addEventListener('input', function () {
-    document.getElementById('segmentsCountByVValue').textContent = this.value;
-    updateModel();
+document.getElementById('filterToggle').addEventListener('change', function () {
+    updateAudioGraph();
 });
 
 window.onload = init;

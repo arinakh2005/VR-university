@@ -12,28 +12,29 @@
         }
     </script>
 </head>
-
 <body>
 <h2>Corrugated Sphere Exporter</h2>
 <button id="exportBtn">Export .glb</button>
 <script type="module">
-    import * as THREE from 'three';
-    import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+    import * as THREE from "three";
+    import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 
-    function createCorrugatedSphereGeometry(radius, corrugation, waveCount, segmentsU, segmentsV) {
+    function createCorrugatedSphereGeometry(radius, a, n, segmentsU, segmentsV) {
         const vertices = [];
         const indices = [];
 
         for (let i = 0; i <= segmentsU; i++) {
             const phi = (i / segmentsU) * 2 * Math.PI;
+
             for (let j = 0; j <= segmentsV; j++) {
                 const v = (j / segmentsV) * Math.PI;
                 const cosV = Math.cos(v);
                 const sinV = Math.sin(v);
-                const similarPart = radius * cosV + corrugation * (1 - sinV) * Math.cos(waveCount * phi);
+                const similarPart = radius * cosV + a * (1 - sinV) * Math.cos(n * phi);
                 const x = similarPart * Math.cos(phi);
                 const y = similarPart * Math.sin(phi);
                 const z = radius * sinV;
+
                 vertices.push(x, y, z);
             }
         }
@@ -42,36 +43,80 @@
             for (let j = 0; j < segmentsV; j++) {
                 const point = i * (segmentsV + 1) + j;
                 const nextRow = point + (segmentsV + 1);
+
                 indices.push(point, nextRow, point + 1);
                 indices.push(point + 1, nextRow, nextRow + 1);
             }
         }
 
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(vertices, 3)
+        );
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
+        geometry.normalizeNormals();
+
         return geometry;
     }
 
-    function exportModel() {
+    async function exportModel() {
         const scene = new THREE.Scene();
-        const geometry = createCorrugatedSphereGeometry(1, 0.3, 5, 64, 32);
-        const material = new THREE.MeshStandardMaterial({ color: 0x3366ff });
-        const mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        const geometry = createCorrugatedSphereGeometry(1, 0.3, 7, 100, 100);
+        const redMaterial = new THREE.MeshStandardMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.6,
+            depthWrite: false
+        });
+
+        const leftMesh = new THREE.Mesh(geometry, redMaterial);
+        leftMesh.name = "LeftEyeModel";
+        leftMesh.position.set(-0.5, 0, 0);
+        scene.add(leftMesh);
+
+        const blueMaterial = new THREE.MeshStandardMaterial({
+            color: 0x0000ff,
+            transparent: true,
+            opacity: 0.6,
+            depthWrite: false
+        });
+        const rightMesh = new THREE.Mesh(geometry, blueMaterial);
+        rightMesh.name = "RightEyeModel";
+        rightMesh.position.set(0.5, 0, 0.005);
+        scene.add(rightMesh);
 
         const exporter = new GLTFExporter();
-        exporter.parse(scene, (result) => {
-            const blob = new Blob([result], { type: 'model/gltf-binary' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = 'corrugated-sphere.glb';
-            link.click();
-        }, { binary: true });
+        exporter.parse(
+            scene,
+            (result) => {
+                let blob, filename;
+                if (result instanceof ArrayBuffer) {
+                    // Бінарний .glb
+                    blob = new Blob([result], { type: "model/gltf-binary" });
+                    filename = "corrugated-sphere.glb";
+                } else {
+                    // JSON .gltf
+                    const json = JSON.stringify(result, null, 2);
+                    blob = new Blob([json], { type: "model/gltf+json" });
+                    filename = "corrugated-sphere.gltf";
+                }
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+            },
+            { binary: true }
+        );
     }
 
-    document.getElementById('exportBtn').addEventListener('click', exportModel);
+    document.getElementById("exportBtn").addEventListener("click", exportModel);
 </script>
 </body>
 </html>

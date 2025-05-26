@@ -74,8 +74,8 @@ async function initAudioFromFile(file) {
 
         filterNode = audioContext.createBiquadFilter();
         filterNode.type = 'bandpass';
-        filterNode.frequency.value = 1000;
-        filterNode.Q.value = 1;
+        filterNode.frequency.value = parseFloat(document.getElementById('audioFrequency').value);
+        filterNode.Q.value = parseFloat(document.getElementById('audioQuality').value);
 
         analyserNode = audioContext.createAnalyser();
         analyserNode.fftSize = 64;
@@ -241,7 +241,7 @@ function getRotationMatrix4FromVector(rotationVector) {
 }
 
 function connectSensorServer() {
-    const sensorIp   = '192.168.0.103';
+    const sensorIp   = '192.168.0.106';
     const sensorPort = 8080;
     const sensorType = 'android.sensor.rotation_vector';
     const socketUrl = `ws://${sensorIp}:${sensorPort}/sensor/connect?type=${sensorType}`;
@@ -361,8 +361,20 @@ function updateAudioGraph() {
     pannerNode.connect(audioContext.destination);
 }
 
-document.querySelectorAll('input').forEach(input => {
-    input.addEventListener('input', () => draw());
+['convergence', 'eyeSeparation', 'fov', 'nearClippingDistance', 'farClippingDistance'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', draw);
+});
+
+document.getElementById('audioFrequency').addEventListener('input', () => {
+    const value = parseFloat(document.getElementById('audioFrequency').value);
+    document.getElementById('audioFrequencyValue').textContent = value.toFixed(0);
+    if (filterNode) filterNode.frequency.value = value;
+});
+
+document.getElementById('audioQuality').addEventListener('input', () => {
+    const value = parseFloat(document.getElementById('audioQuality').value);
+    document.getElementById('audioQualityValue').textContent = value.toFixed(1);
+    if (filterNode) filterNode.Q.value = value;
 });
 
 document.getElementById('audioFile').addEventListener('change', function () {

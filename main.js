@@ -5,6 +5,7 @@ import { StereoCamera } from './stereo-camera.js';
 
 let gl;
 let model;
+let modelParams;
 let stereoCamera;
 let shaderProgram;
 let backgroundShaderProgram;
@@ -190,27 +191,47 @@ function draw() {
     modelViewProjection = m4.multiply(leftProjection, modelView);
     gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
     updateModel();
+    model.draw();
+    model.drawWireframe();
 
     gl.colorMask(false, true, true, true);
     stereoCamera.applyFrustum(modelView, rightProjection, 'right');
     modelViewProjection = m4.multiply(rightProjection, modelView);
     gl.uniformMatrix4fv(shaderProgram.uModelViewProjectionMatrix, false, modelViewProjection);
-    updateModel();
+    model.draw();
+    model.drawWireframe();
 
     gl.colorMask(true, true, true, true);
 }
 
 function updateModel() {
-    const radius = parseFloat(document.getElementById('radius').value);
-    const amplitude = parseFloat(document.getElementById('amplitude').value);
-    const wavesCount = parseInt(document.getElementById('wavesCount').value);
-    const segmentsCountByU = parseInt(document.getElementById('segmentsCountByU').value);
-    const segmentsCountByV = parseInt(document.getElementById('segmentsCountByV').value);
+    const params = {
+        radius: parseFloat(document.getElementById('radius').value),
+        amplitude: parseFloat(document.getElementById('amplitude').value),
+        wavesCount: parseInt(document.getElementById('wavesCount').value),
+        segmentsCountByU: parseInt(document.getElementById('segmentsCountByU').value),
+        segmentsCountByV: parseInt(document.getElementById('segmentsCountByV').value),
+    };
 
-    model = new Model(gl, shaderProgram, radius, amplitude, wavesCount, segmentsCountByU, segmentsCountByV);
-    model.bufferData();
-    model.draw();
-    model.drawWireframe();
+    if (!model) {
+        model = new Model(gl, shaderProgram, params.radius, params.amplitude, params.wavesCount, params.segmentsCountByU, params.segmentsCountByV);
+        modelParams = params;
+    }
+
+    const isParamDataChanged = Object.keys(params).some((key) =>
+        params[key] !== modelParams[key],
+    );
+
+    if (isParamDataChanged) {
+        model.radius = params.radius;
+        model.a = params.amplitude;
+        model.n = params.wavesCount;
+        model.segmentsCountU = params.segmentsCountByU;
+        model.segmentsCountV = params.segmentsCountByV;
+
+        model.bufferData();
+        modelParams = params;
+    }
 }
 
 function updateStereoCamera() {
